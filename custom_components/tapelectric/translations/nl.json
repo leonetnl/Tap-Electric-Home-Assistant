@@ -22,28 +22,19 @@
   "entity": {
     "sensor": {
       "load_status": {
-        "name": "Laadstatus"
-      },
-      "current_power": {
-        "name": "Actueel vermogen"
+        "name": "Laadpaalstatus"
       },
       "current_session_energy": {
         "name": "Energie huidige sessie"
       },
-      "total_energy": {
-        "name": "Totale energie"
+      "historical_synced_energy": {
+        "name": "Historisch gesynchroniseerde energie"
       },
       "session_start": {
         "name": "Starttijd sessie"
       },
       "session_duration": {
         "name": "Sessieduur"
-      },
-      "session_cost": {
-        "name": "Sessiekosten"
-      },
-      "online_status": {
-        "name": "Online status"
       },
       "connector_status": {
         "name": "Connectorstatus"

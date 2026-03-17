@@ -22,28 +22,19 @@
   "entity": {
     "sensor": {
       "load_status": {
-        "name": "Load status"
-      },
-      "current_power": {
-        "name": "Current power"
+        "name": "Charger status"
       },
       "current_session_energy": {
         "name": "Current session energy"
       },
-      "total_energy": {
-        "name": "Total energy"
+      "historical_synced_energy": {
+        "name": "Historical synced energy"
       },
       "session_start": {
         "name": "Session start"
       },
       "session_duration": {
         "name": "Session duration"
-      },
-      "session_cost": {
-        "name": "Session cost"
-      },
-      "online_status": {
-        "name": "Online status"
       },
       "connector_status": {
         "name": "Connector status"
@@ -59,4 +50,3 @@
     }
   }
 }
-

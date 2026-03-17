@@ -10,7 +10,7 @@ Start alleen Home Assistant:
 
 ```bash
 cd docker-test
-docker compose up
+./start-prod.sh
 ```
 
 Open daarna:
@@ -30,7 +30,7 @@ Start Home Assistant plus de mock API:
 
 ```bash
 cd docker-test
-docker compose --profile mock up
+./start-mock.sh
 ```
 
 Open daarna:
@@ -55,7 +55,7 @@ http://localhost:8080
 - gebruikt een aparte Home Assistant instance
 - mount de lokale integratie vanuit `../custom_components/tapelectric`
 - schrijft Home Assistant testdata alleen naar `docker-test/ha-config`
-- mount de vaste Home Assistant config vanuit `docker-test/configuration.yaml`
+- gebruikt `docker-test/configuration.yaml` als template voor `docker-test/ha-config/configuration.yaml`
 - zet debug logging aan voor `custom_components.tapelectric`
 - kan optioneel een lokale mock Tap Electric API starten
 
@@ -85,10 +85,18 @@ docker compose down
 
 ## Reset van de testomgeving
 
-Verwijder de inhoud van `docker-test/ha-config` als je een schone testinstallatie wilt.
+Voor een volledig schone testinstallatie:
+
+```bash
+cd docker-test
+./reset.sh
+```
 
 ## Bestanden
 
 - `docker-compose.yml`: start Home Assistant en optioneel de mock API
 - `configuration.yaml`: minimale Home Assistant configuratie met debug logging
 - `mock-api/mock_api.py`: eenvoudige Tap Electric mock API
+- `start-mock.sh`: start Home Assistant met mock API
+- `start-prod.sh`: start Home Assistant zonder mock API
+- `reset.sh`: stopt de testomgeving en verwijdert runtime-data

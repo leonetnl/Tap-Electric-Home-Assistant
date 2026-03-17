@@ -9,7 +9,6 @@ services:
       - TZ=Europe/Amsterdam
     volumes:
       - ./ha-config:/config
-      - ./configuration.yaml:/config/configuration.yaml:ro
       - ../custom_components/tapelectric:/config/custom_components/tapelectric:ro
 
   mock-api:

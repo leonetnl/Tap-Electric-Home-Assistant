@@ -10,6 +10,7 @@ This repository is structured for installation through HACS and follows modern H
 - Multiple chargers per account
 - Per-charger devices and entities
 - Defensive parsing for incomplete or evolving API responses
+- Historical session backfill into Home Assistant long-term statistics
 
 ## Features
 
@@ -18,19 +19,17 @@ This repository is structured for installation through HACS and follows modern H
 - Connectivity test during config flow setup
 - Discovery of multiple chargers on the same Tap Electric account
 - Per-charger sensors for:
-  - Load status
-  - Current power draw
+  - Charger status
+  - Connector status
   - Current session energy
-  - Historical total energy
+  - Historical synced energy
   - Session start time
   - Session duration
-  - Session cost
-  - Online/offline status
-  - Connector status
 - Per-charger binary sensors for:
   - Charging
   - Occupied
 - Raw API fragments exposed in `extra_state_attributes` for easier debugging
+- Historical sync of completed sessions after Home Assistant downtime
 
 ## Installation via HACS
 
@@ -66,13 +65,10 @@ The integration validates the API key during setup by performing a test API requ
 Depending on the charger names and API response fields, you can expect entities similar to:
 
 - `sensor.tap_electric_home_charger_load_status`
-- `sensor.tap_electric_home_charger_current_power`
 - `sensor.tap_electric_home_charger_current_session_energy`
-- `sensor.tap_electric_home_charger_total_energy`
+- `sensor.tap_electric_home_charger_historical_synced_energy`
 - `sensor.tap_electric_home_charger_session_start`
 - `sensor.tap_electric_home_charger_session_duration`
-- `sensor.tap_electric_home_charger_session_cost`
-- `sensor.tap_electric_home_charger_online_status`
 - `sensor.tap_electric_home_charger_connector_status`
 - `binary_sensor.tap_electric_home_charger_charging`
 - `binary_sensor.tap_electric_home_charger_occupied`
@@ -101,12 +97,23 @@ The API client retries temporary failures such as:
 
 If the API remains unavailable, the coordinator update will fail temporarily and Home Assistant will mark the entities unavailable until the next successful refresh.
 
+### Historical data after Home Assistant downtime
+
+The integration stores imported Tap Electric session IDs and will backfill completed charging sessions into Home Assistant long-term statistics on the next successful refresh.
+
+This improves reliability for:
+
+- historical energy totals
+
+It does not reconstruct a full historical power curve unless the Tap Electric API eventually exposes fine-grained time series data.
+
 ## Known limitations
 
 - Exact Tap Electric API endpoints and field names may still need confirmation.
+- Historical backfill is only as complete as the sessions endpoint response or pagination that the Tap Electric API exposes.
+- The currently confirmed production endpoints do not reliably expose live power, online/offline state, or session cost, so those sensors are intentionally not created.
 - New chargers added after setup may require a reload of the integration if Home Assistant has not yet created the matching entities.
 - This integration is read-only. It does not start or stop charging sessions.
-- Session and cost sensors depend on the API exposing those fields.
 
 ## Development notes
 

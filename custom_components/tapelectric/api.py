@@ -66,6 +66,8 @@ ACTIVE_SESSIONS_ENDPOINT_CANDIDATES: tuple[str, ...] = (
 
 # TODO: confirm exact Tap Electric endpoint/response.
 SESSIONS_ENDPOINT_CANDIDATES: tuple[str, ...] = (
+    "/api/v1/charger-sessions",
+    "/v1/charger-sessions",
     "/v1/sessions",
     "/api/v1/sessions",
     "/v1/charging-sessions",
@@ -164,10 +166,36 @@ class TapElectricApiClient:
             optional=True,
             default=[],
         )
-        return self._extract_list(
+        sessions = self._extract_list(
             payload,
-            ("sessions", "charging_sessions", "items", "data", "results"),
+            (
+                "sessions",
+                "charging_sessions",
+                "charger_sessions",
+                "chargingSessions",
+                "chargerSessions",
+                "items",
+                "data",
+                "results",
+                "content",
+            ),
         )
+        if not sessions:
+            if isinstance(payload, dict):
+                _LOGGER.debug(
+                    "Tap Electric sessions response contained no recognized session list. Top-level keys: %s",
+                    sorted(payload.keys()),
+                )
+            elif isinstance(payload, list):
+                _LOGGER.debug(
+                    "Tap Electric sessions response was a list but contained no recognized session dict entries"
+                )
+            else:
+                _LOGGER.debug(
+                    "Tap Electric sessions response contained no recognized session list. Payload type: %s",
+                    type(payload).__name__,
+                )
+        return sessions
 
     async def _async_request_candidates(
         self,
@@ -336,6 +364,11 @@ class TapElectricApiClient:
             value = payload.get(key)
             if isinstance(value, list):
                 return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                for nested_key in ("items", "results", "content", "data"):
+                    nested_value = value.get(nested_key)
+                    if isinstance(nested_value, list):
+                        return [item for item in nested_value if isinstance(item, dict)]
 
         return []
 

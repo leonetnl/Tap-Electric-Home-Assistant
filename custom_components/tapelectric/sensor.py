@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTime
+from homeassistant.const import UnitOfEnergy, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -39,15 +39,6 @@ SENSOR_DESCRIPTIONS: tuple[TapElectricSensorEntityDescription, ...] = (
         value_fn=lambda snapshot: snapshot.get("load_status"),
     ),
     TapElectricSensorEntityDescription(
-        key="current_power",
-        translation_key="current_power",
-        icon="mdi:flash",
-        native_unit_of_measurement=UnitOfPower.KILO_WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda snapshot: snapshot.get("current_power_kw"),
-    ),
-    TapElectricSensorEntityDescription(
         key="current_session_energy",
         translation_key="current_session_energy",
         icon="mdi:lightning-bolt",
@@ -57,13 +48,17 @@ SENSOR_DESCRIPTIONS: tuple[TapElectricSensorEntityDescription, ...] = (
         value_fn=lambda snapshot: snapshot.get("session_energy_kwh"),
     ),
     TapElectricSensorEntityDescription(
-        key="total_energy",
-        translation_key="total_energy",
-        icon="mdi:counter",
+        key="historical_synced_energy",
+        translation_key="historical_synced_energy",
+        icon="mdi:database-sync",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda snapshot: snapshot.get("total_energy_kwh"),
+        value_fn=lambda snapshot: snapshot.get("historical_synced_energy_kwh"),
+        attrs_fn=lambda snapshot: {
+            "statistic_id": snapshot.get("energy_statistic_id"),
+            "history_last_sync": snapshot.get("history_last_sync"),
+        },
     ),
     TapElectricSensorEntityDescription(
         key="session_start",
@@ -81,20 +76,6 @@ SENSOR_DESCRIPTIONS: tuple[TapElectricSensorEntityDescription, ...] = (
         attrs_fn=lambda snapshot: {
             "duration_human": _format_duration(snapshot.get("session_duration_seconds"))
         },
-    ),
-    TapElectricSensorEntityDescription(
-        key="session_cost",
-        translation_key="session_cost",
-        icon="mdi:currency-eur",
-        device_class=SensorDeviceClass.MONETARY,
-        value_fn=lambda snapshot: snapshot.get("session_cost"),
-        unit_fn=lambda snapshot: snapshot.get("currency") or "EUR",
-    ),
-    TapElectricSensorEntityDescription(
-        key="online_status",
-        translation_key="online_status",
-        icon="mdi:lan-connect",
-        value_fn=lambda snapshot: snapshot.get("online_status"),
     ),
     TapElectricSensorEntityDescription(
         key="connector_status",
@@ -190,4 +171,3 @@ def _format_duration(value: Any) -> str | None:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 # To add new sensors later, append another TapElectricSensorEntityDescription above.
-
