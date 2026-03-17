@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import TapElectricApiClient
 from .const import CONF_BASE_URL, CONF_API_KEY, DOMAIN, PLATFORMS
 from .coordinator import TapElectricDataUpdateCoordinator
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -51,4 +54,3 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload a Tap Electric config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
-
