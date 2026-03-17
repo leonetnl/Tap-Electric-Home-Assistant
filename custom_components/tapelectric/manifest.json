@@ -1,0 +1,17 @@
+{
+  "domain": "tapelectric",
+  "name": "Tap Electric",
+  "codeowners": [
+    "@leonboon"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/leonetnl/Tap-Electric-Home-Assistant",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/leonetnl/Tap-Electric-Home-Assistant/issues",
+  "loggers": [
+    "custom_components.tapelectric"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}

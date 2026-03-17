@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Tap Electric",
+        "description": "Enter your Tap Electric API details.",
+        "data": {
+          "api_key": "API key",
+          "base_url": "Base URL"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Tap Electric API.",
+      "invalid_auth": "The API key is invalid.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Tap Electric account is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "load_status": {
+        "name": "Load status"
+      },
+      "current_power": {
+        "name": "Current power"
+      },
+      "current_session_energy": {
+        "name": "Current session energy"
+      },
+      "total_energy": {
+        "name": "Total energy"
+      },
+      "session_start": {
+        "name": "Session start"
+      },
+      "session_duration": {
+        "name": "Session duration"
+      },
+      "session_cost": {
+        "name": "Session cost"
+      },
+      "online_status": {
+        "name": "Online status"
+      },
+      "connector_status": {
+        "name": "Connector status"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Charging"
+      },
+      "occupied": {
+        "name": "Occupied"
+      }
+    }
+  }
+}
+

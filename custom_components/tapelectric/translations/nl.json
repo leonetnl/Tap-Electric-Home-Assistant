@@ -1,0 +1,61 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbind met Tap Electric",
+        "description": "Voer je Tap Electric API-gegevens in.",
+        "data": {
+          "api_key": "API-sleutel",
+          "base_url": "Basis-URL"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinden met de Tap Electric API is mislukt.",
+      "invalid_auth": "De API-sleutel is ongeldig.",
+      "unknown": "Er is een onverwachte fout opgetreden."
+    },
+    "abort": {
+      "already_configured": "Dit Tap Electric-account is al geconfigureerd."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "load_status": {
+        "name": "Laadstatus"
+      },
+      "current_power": {
+        "name": "Actueel vermogen"
+      },
+      "current_session_energy": {
+        "name": "Energie huidige sessie"
+      },
+      "total_energy": {
+        "name": "Totale energie"
+      },
+      "session_start": {
+        "name": "Starttijd sessie"
+      },
+      "session_duration": {
+        "name": "Sessieduur"
+      },
+      "session_cost": {
+        "name": "Sessiekosten"
+      },
+      "online_status": {
+        "name": "Online status"
+      },
+      "connector_status": {
+        "name": "Connectorstatus"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Bezig met laden"
+      },
+      "occupied": {
+        "name": "Bezet"
+      }
+    }
+  }
+}

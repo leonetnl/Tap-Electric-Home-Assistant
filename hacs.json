@@ -1,0 +1,10 @@
+{
+  "name": "Tap Electric",
+  "content_in_root": false,
+  "domains": [
+    "tapelectric"
+  ],
+  "homeassistant": "2024.6.0",
+  "render_readme": true
+}
+
