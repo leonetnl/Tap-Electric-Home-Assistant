@@ -92,6 +92,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             active_sessions,
             statuses,
         )
+        session_energy_totals = _calculate_session_energy_totals(sessions)
 
         charger_snapshots: dict[str, dict[str, Any]] = {}
 
@@ -120,6 +121,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 last_session=last_session,
                 history_state=self._history_state or _default_history_state(),
                 entry_id=self._entry.entry_id,
+                api_session_energy_totals=session_energy_totals,
             )
 
         return {
@@ -414,6 +416,7 @@ def _build_charger_snapshot(
     last_session: Mapping[str, Any] | None,
     history_state: Mapping[str, Any],
     entry_id: str,
+    api_session_energy_totals: Mapping[str, float],
 ) -> dict[str, Any]:
     """Merge raw payloads into one normalized charger snapshot."""
     active_session = active_session or {}
@@ -485,6 +488,11 @@ def _build_charger_snapshot(
     historical_synced_energy_kwh = _extract_float(
         history_state.get("historical_energy_kwh", {}).get(charger_id)
     )
+    api_historical_energy_kwh = _extract_float(api_session_energy_totals.get(charger_id))
+    if historical_synced_energy_kwh is None:
+        historical_synced_energy_kwh = api_historical_energy_kwh
+    elif api_historical_energy_kwh is not None:
+        historical_synced_energy_kwh = max(historical_synced_energy_kwh, api_historical_energy_kwh)
     if total_energy_kwh is None:
         total_energy_kwh = historical_synced_energy_kwh
     elif historical_synced_energy_kwh is not None:
@@ -565,6 +573,7 @@ def _build_charger_snapshot(
         "session_cost": session_cost,
         "currency": currency,
         "historical_synced_energy_kwh": historical_synced_energy_kwh,
+        "api_historical_energy_kwh": api_historical_energy_kwh,
         "historical_synced_cost": historical_synced_cost,
         "historical_cost_currency": historical_cost_currency,
         "history_last_sync": history_last_sync,
@@ -712,6 +721,43 @@ def _match_active_session(
         if _extract_session_charger_id(session) == charger_id:
             return session
     return None
+
+
+def _calculate_session_energy_totals(
+    sessions: Iterable[Mapping[str, Any]],
+) -> dict[str, float]:
+    """Calculate per-charger total energy from the current charger-sessions payload."""
+    totals: dict[str, float] = {}
+
+    for session in sessions:
+        charger_id = _extract_session_charger_id(session)
+        if charger_id is None:
+            continue
+
+        energy_kwh = _extract_energy_kwh(
+            _candidate_payloads(session),
+            (
+                "session_energy_kwh",
+                "energy_delivered_kwh",
+                "charged_energy_kwh",
+                "energy_kwh",
+                "sessionEnergyKwh",
+                "energyDeliveredKwh",
+                "chargedEnergyKwh",
+                "energyKwh",
+                "wh",
+                "session_energy_wh",
+                "energy_delivered_wh",
+                "sessionEnergyWh",
+                "energyDeliveredWh",
+            ),
+        )
+        if energy_kwh is None:
+            continue
+
+        totals[charger_id] = round(float(totals.get(charger_id, 0.0)) + max(energy_kwh, 0.0), 3)
+
+    return totals
 
 
 def _match_latest_session(
