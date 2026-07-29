@@ -21,13 +21,18 @@ This repository is structured for installation through HACS and follows modern H
 - Per-charger sensors for:
   - Charger status
   - Connector status
+  - Charging current from active-session meter data
   - Current session energy
+  - Last session energy, end time, duration, and cost excluding VAT
   - Historical synced energy
+  - CDR energy and cost totals
   - Session start time
   - Session duration
+  - Last-used energy, start, charging-time, and idle tariffs
 - Per-charger binary sensors for:
   - Charging
   - Occupied
+  - Online/connectivity
 - Raw API fragments exposed in `extra_state_attributes` for easier debugging
 - Historical sync of completed sessions after Home Assistant downtime
 
@@ -70,8 +75,12 @@ Depending on the charger names and API response fields, you can expect entities 
 - `sensor.tap_electric_home_charger_session_start`
 - `sensor.tap_electric_home_charger_session_duration`
 - `sensor.tap_electric_home_charger_connector_status`
+- `sensor.tap_electric_home_charger_charging_current`
+- `sensor.tap_electric_home_charger_last_session_cost_excl_vat`
+- `sensor.tap_electric_home_charger_last_used_energy_tariff`
 - `binary_sensor.tap_electric_home_charger_charging`
 - `binary_sensor.tap_electric_home_charger_occupied`
+- `binary_sensor.tap_electric_home_charger_online`
 
 ## Troubleshooting
 
@@ -111,7 +120,13 @@ It does not reconstruct a full historical power curve unless the Tap Electric AP
 
 - Exact Tap Electric API endpoints and field names may still need confirmation.
 - Historical backfill is only as complete as the sessions endpoint response or pagination that the Tap Electric API exposes.
-- The currently confirmed production endpoints do not reliably expose live power, online/offline state, or session cost, so those sensors are intentionally not created.
+- The currently confirmed production endpoints expose current in amperes during
+  an active session, but not a reliable live power value in watts.
+- Tap exposes tariff details only by tariff ID. The integration derives that ID
+  from the latest charger CDR, so tariff entities deliberately describe the
+  **last-used tariff**, not a guaranteed current location default.
+- Charging current is available only while an active charger session can be
+  matched to session meter data.
 - New chargers added after setup may require a reload of the integration if Home Assistant has not yet created the matching entities.
 - This integration is read-only. It does not start or stop charging sessions.
 

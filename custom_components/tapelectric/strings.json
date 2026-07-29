@@ -38,6 +38,45 @@
       },
       "connector_status": {
         "name": "Connector status"
+      },
+      "charging_current": {
+        "name": "Charging current"
+      },
+      "last_session_end": {
+        "name": "Last session end"
+      },
+      "last_session_energy": {
+        "name": "Last session energy"
+      },
+      "last_session_duration": {
+        "name": "Last session duration"
+      },
+      "last_session_cost_ex_vat": {
+        "name": "Last session cost excl. VAT"
+      },
+      "last_session_energy_cost_ex_vat": {
+        "name": "Last session energy cost excl. VAT"
+      },
+      "last_session_idle_duration": {
+        "name": "Last session idle duration"
+      },
+      "historical_cdr_energy": {
+        "name": "CDR energy total"
+      },
+      "historical_cdr_cost_ex_vat": {
+        "name": "CDR cost total excl. VAT"
+      },
+      "last_used_tariff_kwh": {
+        "name": "Last used energy tariff"
+      },
+      "last_used_tariff_start": {
+        "name": "Last used start tariff"
+      },
+      "last_used_tariff_hour": {
+        "name": "Last used charging time tariff"
+      },
+      "last_used_tariff_idle_hour": {
+        "name": "Last used idle tariff"
       }
     },
     "binary_sensor": {
@@ -46,6 +85,9 @@
       },
       "occupied": {
         "name": "Occupied"
+      },
+      "online": {
+        "name": "Online"
       }
     }
   }

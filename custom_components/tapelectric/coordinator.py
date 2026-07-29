@@ -61,6 +61,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.api = api
         self._entry = entry
+        self._tariff_cache: dict[str, dict[str, Any]] = {}
         self._history_store = Store[dict[str, Any]](
             hass,
             HISTORY_STORAGE_VERSION,
@@ -74,8 +75,8 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             chargers = await self.api.async_get_chargers()
-            active_sessions = await self.api.async_get_active_sessions()
             sessions = await self.api.async_get_sessions()
+            active_sessions = _merge_active_sessions([], sessions)
             statuses = await self._async_fetch_statuses(chargers)
         except TapElectricApiAuthenticationError as err:
             raise ConfigEntryAuthFailed from err
@@ -86,6 +87,17 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ) as err:
             raise UpdateFailed(str(err)) from err
 
+        try:
+            charger_cdrs = await self.api.async_get_charger_cdrs()
+        except TapElectricApiError as err:
+            _LOGGER.warning("Tap Electric CDR refresh failed: %s", err)
+            charger_cdrs = []
+
+        meter_data = await self._async_fetch_active_session_meter_data(
+            active_sessions
+        )
+        tariffs = await self._async_fetch_latest_tariffs(charger_cdrs)
+
         await self._async_backfill_historical_sessions(
             chargers,
             sessions,
@@ -93,6 +105,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             statuses,
         )
         session_energy_totals = _calculate_session_energy_totals(sessions)
+        cdr_totals = _calculate_cdr_totals(charger_cdrs)
 
         charger_snapshots: dict[str, dict[str, Any]] = {}
 
@@ -111,6 +124,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 sessions,
                 exclude_session_id=_extract_session_id(active_session),
             )
+            latest_cdr = _match_latest_cdr(charger_id, charger_cdrs)
             status = statuses.get(charger_id, {})
 
             charger_snapshots[charger_id] = _build_charger_snapshot(
@@ -119,9 +133,13 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 status=status,
                 active_session=active_session,
                 last_session=last_session,
+                latest_cdr=latest_cdr,
+                latest_tariff=tariffs.get(charger_id),
+                meter_data=meter_data.get(charger_id, []),
                 history_state=self._history_state or _default_history_state(),
                 entry_id=self._entry.entry_id,
                 api_session_energy_totals=session_energy_totals,
+                cdr_totals=cdr_totals,
             )
 
         return {
@@ -131,6 +149,7 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "chargers": chargers,
                 "active_sessions": active_sessions,
                 "sessions": sessions,
+                "charger_cdrs": charger_cdrs,
                 "statuses": statuses,
             },
             "history": self._history_state,
@@ -171,6 +190,84 @@ class TapElectricDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {}
 
         return dict(await asyncio.gather(*tasks))
+
+    async def _async_fetch_active_session_meter_data(
+        self,
+        active_sessions: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fetch live meter samples for the active session on each charger."""
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_STATUS_REQUESTS)
+
+        async def _fetch(
+            charger_id: str,
+            session_id: str,
+        ) -> tuple[str, list[dict[str, Any]]]:
+            async with semaphore:
+                try:
+                    return (
+                        charger_id,
+                        await self.api.async_get_session_meter_data(session_id),
+                    )
+                except TapElectricApiError as err:
+                    _LOGGER.warning(
+                        "Tap Electric meter data refresh failed for charger %s: %s",
+                        charger_id,
+                        err,
+                    )
+                    return charger_id, []
+
+        tasks = []
+        for session in active_sessions:
+            charger_id = _extract_session_charger_id(session)
+            session_id = _extract_session_id(session)
+            if charger_id is not None and session_id is not None:
+                tasks.append(_fetch(charger_id, session_id))
+
+        if not tasks:
+            return {}
+
+        return dict(await asyncio.gather(*tasks))
+
+    async def _async_fetch_latest_tariffs(
+        self,
+        charger_cdrs: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch and cache the tariff referenced by each charger's latest CDR."""
+        tariff_ids_by_charger: dict[str, str] = {}
+        for charger_id in {
+            charger_id
+            for cdr in charger_cdrs
+            if (charger_id := _extract_cdr_charger_id(cdr)) is not None
+        }:
+            latest_cdr = _match_latest_cdr(charger_id, charger_cdrs)
+            tariff_id = _extract_first_tariff_id(latest_cdr)
+            if tariff_id is not None:
+                tariff_ids_by_charger[charger_id] = tariff_id
+
+        missing_tariff_ids = {
+            tariff_id
+            for tariff_id in tariff_ids_by_charger.values()
+            if tariff_id not in self._tariff_cache
+        }
+
+        for tariff_id in missing_tariff_ids:
+            try:
+                tariff = await self.api.async_get_tariff(tariff_id)
+            except TapElectricApiError as err:
+                _LOGGER.warning(
+                    "Tap Electric tariff refresh failed for tariff %s: %s",
+                    tariff_id,
+                    err,
+                )
+                continue
+            if tariff:
+                self._tariff_cache[tariff_id] = tariff
+
+        return {
+            charger_id: self._tariff_cache[tariff_id]
+            for charger_id, tariff_id in tariff_ids_by_charger.items()
+            if tariff_id in self._tariff_cache
+        }
 
     async def _async_ensure_history_loaded(self) -> None:
         """Load persisted history sync state."""
@@ -414,13 +511,19 @@ def _build_charger_snapshot(
     status: Mapping[str, Any],
     active_session: Mapping[str, Any] | None,
     last_session: Mapping[str, Any] | None,
+    latest_cdr: Mapping[str, Any] | None,
+    latest_tariff: Mapping[str, Any] | None,
+    meter_data: list[dict[str, Any]],
     history_state: Mapping[str, Any],
     entry_id: str,
     api_session_energy_totals: Mapping[str, float],
+    cdr_totals: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Merge raw payloads into one normalized charger snapshot."""
     active_session = active_session or {}
     last_session = last_session or {}
+    latest_cdr = latest_cdr or {}
+    latest_tariff = latest_tariff or {}
 
     charger_payloads = _candidate_payloads(charger)
     status_payloads = _candidate_payloads(status)
@@ -430,9 +533,14 @@ def _build_charger_snapshot(
     connector = _extract_first_connector(status, charger)
     connector_payloads = _candidate_payloads(connector)
 
+    active_session_payloads = _candidate_payloads(active_session)
+    last_session_payloads = _candidate_payloads(last_session)
+    cdr_payloads = _candidate_payloads(latest_cdr)
+    tariff_payloads = _candidate_payloads(latest_tariff)
+
     session_start = _extract_datetime(
         _coalesce(
-            session_payloads,
+            active_session_payloads or last_session_payloads,
             (
                 "start_time",
                 "started_at",
@@ -454,7 +562,7 @@ def _build_charger_snapshot(
     )
     current_power_kw = _extract_power_kw([*status_payloads, *connector_payloads, *charger_payloads])
     session_energy_kwh = _extract_energy_kwh(
-        [*session_payloads, *status_payloads],
+        [*active_session_payloads, *status_payloads],
         (
             "session_energy_kwh",
             "current_session_energy_kwh",
@@ -470,6 +578,21 @@ def _build_charger_snapshot(
             "energy_delivered_wh",
             "sessionEnergyWh",
             "energyDeliveredWh",
+        ),
+    )
+    last_session_energy_kwh = _extract_energy_kwh(
+        [*last_session_payloads, *cdr_payloads],
+        (
+            "session_energy_kwh",
+            "energy_delivered_kwh",
+            "charged_energy_kwh",
+            "energy_kwh",
+            "sessionEnergyKwh",
+            "energyDeliveredKwh",
+            "chargedEnergyKwh",
+            "energyKwh",
+            "wh",
+            "totalEnergy",
         ),
     )
     total_energy_kwh = _extract_energy_kwh(
@@ -513,6 +636,90 @@ def _build_charger_snapshot(
         )
     )
     currency = _coalesce(session_payloads, ("currency", "currency_code", "currencyCode"))
+    last_session_end = _extract_datetime(
+        _coalesce(
+            [*last_session_payloads, *cdr_payloads],
+            (
+                "end_time",
+                "ended_at",
+                "session_end",
+                "completed_at",
+                "endTime",
+                "endedAt",
+                "sessionEnd",
+                "endDateTime",
+            ),
+        )
+    )
+    last_session_start = _extract_datetime(
+        _coalesce(
+            [*last_session_payloads, *cdr_payloads],
+            (
+                "start_time",
+                "started_at",
+                "session_start",
+                "startTime",
+                "startedAt",
+                "sessionStart",
+                "startDateTime",
+            ),
+        )
+    )
+    last_session_duration_seconds = _extract_elapsed_seconds(
+        last_session_start,
+        last_session_end,
+    )
+    if last_session_duration_seconds is None:
+        duration_hours = _extract_float(
+            _coalesce(cdr_payloads, ("totalTimeHours", "total_time_hours"))
+        )
+        if duration_hours is not None:
+            last_session_duration_seconds = int(duration_hours * 3600)
+
+    last_session_idle_seconds = None
+    idle_hours = _extract_float(
+        _coalesce(cdr_payloads, ("totalParkingTimeHours", "total_parking_time_hours"))
+    )
+    if idle_hours is not None:
+        last_session_idle_seconds = int(idle_hours * 3600)
+
+    last_session_cost_ex_vat = _extract_float(
+        _coalesce(
+            cdr_payloads,
+            ("totalCostExVat", "total_cost_ex_vat"),
+        )
+    )
+    last_session_energy_cost_ex_vat = _extract_float(
+        _coalesce(
+            cdr_payloads,
+            ("totalEnergyCost", "total_energy_cost"),
+        )
+    )
+    cdr_currency = _coalesce(cdr_payloads, ("currency", "currency_code", "currencyCode"))
+    charger_cdr_totals = cdr_totals.get(charger_id, {})
+    latest_current_amp = _extract_latest_meter_value(
+        meter_data,
+        measurand="Current",
+        unit="A",
+    )
+
+    last_used_tariff_currency = _coalesce(
+        tariff_payloads,
+        ("currency", "currency_code", "currencyCode"),
+    )
+    last_used_tariff_kwh = _extract_float(
+        _coalesce(tariff_payloads, ("costPerKwh", "cost_per_kwh"))
+    )
+    last_used_tariff_start = _extract_float(
+        _coalesce(tariff_payloads, ("costPerStart", "cost_per_start"))
+    )
+    last_used_tariff_hour = _extract_float(
+        _coalesce(tariff_payloads, ("costPerHour", "cost_per_hour"))
+    )
+    last_used_tariff_idle_hour = _extract_float(
+        _coalesce(tariff_payloads, ("costPerIdleHour", "cost_per_idle_hour"))
+    )
+    last_used_tariff_type = _coalesce(tariff_payloads, ("type", "tariff_type"))
     historical_synced_cost = _extract_float(
         history_state.get("historical_cost", {}).get(charger_id)
     )
@@ -572,6 +779,25 @@ def _build_charger_snapshot(
         "session_duration_seconds": session_duration_seconds,
         "session_cost": session_cost,
         "currency": currency,
+        "last_session_start": last_session_start,
+        "last_session_end": last_session_end,
+        "last_session_duration_seconds": last_session_duration_seconds,
+        "last_session_idle_seconds": last_session_idle_seconds,
+        "last_session_energy_kwh": last_session_energy_kwh,
+        "last_session_cost_ex_vat": last_session_cost_ex_vat,
+        "last_session_energy_cost_ex_vat": last_session_energy_cost_ex_vat,
+        "last_session_currency": cdr_currency,
+        "historical_cdr_energy_kwh": charger_cdr_totals.get("energy_kwh"),
+        "historical_cdr_cost_ex_vat": charger_cdr_totals.get("cost_ex_vat"),
+        "historical_cdr_currency": charger_cdr_totals.get("currency"),
+        "charging_current_amp": latest_current_amp,
+        "last_used_tariff_kwh": last_used_tariff_kwh,
+        "last_used_tariff_start": last_used_tariff_start,
+        "last_used_tariff_hour": last_used_tariff_hour,
+        "last_used_tariff_idle_hour": last_used_tariff_idle_hour,
+        "last_used_tariff_currency": last_used_tariff_currency,
+        "last_used_tariff_type": last_used_tariff_type,
+        "last_used_tariff_id": _extract_first_tariff_id(latest_cdr),
         "historical_synced_energy_kwh": historical_synced_energy_kwh,
         "api_historical_energy_kwh": api_historical_energy_kwh,
         "historical_synced_cost": historical_synced_cost,
@@ -580,6 +806,7 @@ def _build_charger_snapshot(
         "energy_statistic_id": _build_energy_statistic_id(entry_id, charger_id),
         "cost_statistic_id": _build_cost_statistic_id(entry_id, charger_id),
         "online_status": online_status,
+        "is_online": online,
         "connector_status": connector_status or "unknown",
         "is_charging": bool(is_charging),
         "is_occupied": bool(is_occupied),
@@ -591,6 +818,11 @@ def _build_charger_snapshot(
             "status": dict(status),
             "active_session": dict(active_session),
             "last_session": dict(last_session),
+            "latest_cdr": _safe_cdr_debug_payload(latest_cdr),
+            "latest_tariff": dict(latest_tariff),
+            "meter_data": {
+                "sample_count": len(meter_data),
+            },
             "connector": dict(connector) if isinstance(connector, Mapping) else {},
         },
     }
@@ -629,6 +861,27 @@ def _candidate_payloads(*payloads: Mapping[str, Any] | None) -> list[Mapping[str
                 collected.extend(item for item in nested_list if isinstance(item, Mapping))
 
     return collected
+
+
+def _safe_cdr_debug_payload(cdr: Mapping[str, Any]) -> dict[str, Any]:
+    """Return useful CDR fields without driver or token identifiers."""
+    safe_keys = (
+        "id",
+        "startDateTime",
+        "endDateTime",
+        "currency",
+        "tariffIds",
+        "totalCostExVat",
+        "totalEnergy",
+        "totalEnergyCost",
+        "totalTimeHours",
+        "totalParkingTimeHours",
+        "lastUpdated",
+        "chargerId",
+        "connectorId",
+        "createdAt",
+    )
+    return {key: cdr[key] for key in safe_keys if key in cdr}
 
 
 def _flatten_payload_keys(payload: Mapping[str, Any]) -> set[str]:
@@ -723,6 +976,37 @@ def _match_active_session(
     return None
 
 
+def _merge_active_sessions(
+    explicit_active_sessions: Iterable[dict[str, Any]],
+    sessions: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge explicit active sessions with open charger-session records."""
+    explicit = list(explicit_active_sessions)
+    all_sessions = list(sessions)
+    explicit_ids = {
+        session_id
+        for session in explicit
+        if (session_id := _extract_session_id(session)) is not None
+    }
+    merged: dict[str, dict[str, Any]] = {}
+
+    for session in (*explicit, *all_sessions):
+        session_id = _extract_session_id(session)
+        if session_id is None:
+            continue
+        if session_id in explicit_ids or (
+            not _session_has_end_marker(session)
+            and (
+                _session_is_active(session)
+                or "endedAt" in session
+                or "ended_at" in session
+            )
+        ):
+            merged[session_id] = session
+
+    return list(merged.values())
+
+
 def _calculate_session_energy_totals(
     sessions: Iterable[Mapping[str, Any]],
 ) -> dict[str, float]:
@@ -756,6 +1040,98 @@ def _calculate_session_energy_totals(
             continue
 
         totals[charger_id] = round(float(totals.get(charger_id, 0.0)) + max(energy_kwh, 0.0), 3)
+
+    return totals
+
+
+def _extract_cdr_charger_id(cdr: Mapping[str, Any]) -> str | None:
+    """Extract a charger identifier from a charge detail record."""
+    value = _coalesce(
+        _candidate_payloads(cdr),
+        ("chargerId", "charger_id", "chargePointId", "charge_point_id"),
+    )
+    return str(value) if value is not None else None
+
+
+def _extract_first_tariff_id(cdr: Mapping[str, Any] | None) -> str | None:
+    """Extract the first tariff ID referenced by a CDR."""
+    if not isinstance(cdr, Mapping):
+        return None
+
+    tariff_ids = cdr.get("tariffIds", cdr.get("tariff_ids"))
+    if isinstance(tariff_ids, list):
+        for tariff_id in tariff_ids:
+            if tariff_id not in (None, ""):
+                return str(tariff_id)
+
+    tariff_id = cdr.get("tariffId", cdr.get("tariff_id"))
+    return str(tariff_id) if tariff_id not in (None, "") else None
+
+
+def _cdr_sort_key(cdr: Mapping[str, Any]) -> datetime:
+    """Return the most useful CDR timestamp for ordering."""
+    value = _coalesce(
+        _candidate_payloads(cdr),
+        (
+            "endDateTime",
+            "end_date_time",
+            "createdAt",
+            "created_at",
+            "startDateTime",
+            "start_date_time",
+        ),
+    )
+    return _extract_datetime(value) or datetime.min.replace(tzinfo=UTC)
+
+
+def _match_latest_cdr(
+    charger_id: str,
+    charger_cdrs: Iterable[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the newest CDR for one charger."""
+    matches = [
+        cdr
+        for cdr in charger_cdrs
+        if _extract_cdr_charger_id(cdr) == charger_id
+    ]
+    return max(matches, key=_cdr_sort_key) if matches else None
+
+
+def _calculate_cdr_totals(
+    charger_cdrs: Iterable[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Calculate per-charger energy and cost totals from CDRs."""
+    totals: dict[str, dict[str, Any]] = {}
+
+    for cdr in charger_cdrs:
+        charger_id = _extract_cdr_charger_id(cdr)
+        if charger_id is None:
+            continue
+
+        item = totals.setdefault(
+            charger_id,
+            {"energy_kwh": 0.0, "cost_ex_vat": 0.0, "currency": None},
+        )
+        energy = _extract_float(
+            _coalesce(_candidate_payloads(cdr), ("totalEnergy", "total_energy"))
+        )
+        cost = _extract_float(
+            _coalesce(
+                _candidate_payloads(cdr),
+                ("totalCostExVat", "total_cost_ex_vat"),
+            )
+        )
+        currency = _coalesce(
+            _candidate_payloads(cdr),
+            ("currency", "currency_code", "currencyCode"),
+        )
+
+        if energy is not None:
+            item["energy_kwh"] = round(item["energy_kwh"] + max(energy, 0.0), 3)
+        if cost is not None:
+            item["cost_ex_vat"] = round(item["cost_ex_vat"] + max(cost, 0.0), 2)
+        if currency is not None:
+            item["currency"] = str(currency)
 
     return totals
 
@@ -897,6 +1273,42 @@ def _extract_session_duration_seconds(
         return int(duration_hours * 3600)
 
     return None
+
+
+def _extract_elapsed_seconds(
+    started_at: datetime | None,
+    ended_at: datetime | None,
+) -> int | None:
+    """Return a non-negative elapsed duration between two timestamps."""
+    if started_at is None or ended_at is None:
+        return None
+    return max(0, int((ended_at - started_at).total_seconds()))
+
+
+def _extract_latest_meter_value(
+    meter_data: Iterable[Mapping[str, Any]],
+    *,
+    measurand: str,
+    unit: str,
+) -> float | None:
+    """Return the newest numeric meter sample for a measurand and unit."""
+    matches = [
+        sample
+        for sample in meter_data
+        if str(sample.get("measurand", "")).casefold() == measurand.casefold()
+        and str(sample.get("unit", "")).casefold() == unit.casefold()
+        and _extract_float(sample.get("value")) is not None
+    ]
+    if not matches:
+        return None
+
+    latest = max(
+        matches,
+        key=lambda sample: _extract_datetime(sample.get("measuredAt"))
+        or datetime.min.replace(tzinfo=UTC),
+    )
+    numeric = _extract_float(latest.get("value"))
+    return round(numeric, 3) if numeric is not None else None
 
 
 def _extract_session_completed_at(session: Mapping[str, Any]) -> datetime | None:

@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfTime
+from homeassistant.const import UnitOfElectricCurrent, UnitOfEnergy, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -82,6 +82,130 @@ SENSOR_DESCRIPTIONS: tuple[TapElectricSensorEntityDescription, ...] = (
         translation_key="connector_status",
         icon="mdi:power-plug",
         value_fn=lambda snapshot: snapshot.get("connector_status"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="charging_current",
+        translation_key="charging_current",
+        icon="mdi:current-ac",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda snapshot: snapshot.get("charging_current_amp"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_end",
+        translation_key="last_session_end",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda snapshot: snapshot.get("last_session_end"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_energy",
+        translation_key="last_session_energy",
+        icon="mdi:lightning-bolt-circle",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda snapshot: snapshot.get("last_session_energy_kwh"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_duration",
+        translation_key="last_session_duration",
+        icon="mdi:timer-check-outline",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        value_fn=lambda snapshot: snapshot.get("last_session_duration_seconds"),
+        attrs_fn=lambda snapshot: {
+            "duration_human": _format_duration(
+                snapshot.get("last_session_duration_seconds")
+            ),
+            "idle_duration_seconds": snapshot.get("last_session_idle_seconds"),
+        },
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_cost_ex_vat",
+        translation_key="last_session_cost_ex_vat",
+        icon="mdi:cash",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda snapshot: snapshot.get("last_session_cost_ex_vat"),
+        unit_fn=lambda snapshot: snapshot.get("last_session_currency"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_energy_cost_ex_vat",
+        translation_key="last_session_energy_cost_ex_vat",
+        icon="mdi:lightning-bolt-circle",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda snapshot: snapshot.get("last_session_energy_cost_ex_vat"),
+        unit_fn=lambda snapshot: snapshot.get("last_session_currency"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_session_idle_duration",
+        translation_key="last_session_idle_duration",
+        icon="mdi:parking",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        device_class=SensorDeviceClass.DURATION,
+        value_fn=lambda snapshot: snapshot.get("last_session_idle_seconds"),
+        attrs_fn=lambda snapshot: {
+            "duration_human": _format_duration(
+                snapshot.get("last_session_idle_seconds")
+            ),
+        },
+    ),
+    TapElectricSensorEntityDescription(
+        key="historical_cdr_energy",
+        translation_key="historical_cdr_energy",
+        icon="mdi:counter",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda snapshot: snapshot.get("historical_cdr_energy_kwh"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="historical_cdr_cost_ex_vat",
+        translation_key="historical_cdr_cost_ex_vat",
+        icon="mdi:cash-multiple",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda snapshot: snapshot.get("historical_cdr_cost_ex_vat"),
+        unit_fn=lambda snapshot: snapshot.get("historical_cdr_currency"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_used_tariff_kwh",
+        translation_key="last_used_tariff_kwh",
+        icon="mdi:cash-fast",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda snapshot: snapshot.get("last_used_tariff_kwh"),
+        unit_fn=lambda snapshot: _rate_unit(snapshot, UnitOfEnergy.KILO_WATT_HOUR),
+        attrs_fn=lambda snapshot: {
+            "tariff_type": snapshot.get("last_used_tariff_type"),
+            "tariff_id": snapshot.get("last_used_tariff_id"),
+        },
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_used_tariff_start",
+        translation_key="last_used_tariff_start",
+        icon="mdi:cash-plus",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda snapshot: snapshot.get("last_used_tariff_start"),
+        unit_fn=lambda snapshot: snapshot.get("last_used_tariff_currency"),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_used_tariff_hour",
+        translation_key="last_used_tariff_hour",
+        icon="mdi:timer-sand",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda snapshot: snapshot.get("last_used_tariff_hour"),
+        unit_fn=lambda snapshot: _rate_unit(snapshot, UnitOfTime.HOURS),
+    ),
+    TapElectricSensorEntityDescription(
+        key="last_used_tariff_idle_hour",
+        translation_key="last_used_tariff_idle_hour",
+        icon="mdi:parking",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda snapshot: snapshot.get("last_used_tariff_idle_hour"),
+        unit_fn=lambda snapshot: _rate_unit(snapshot, UnitOfTime.HOURS),
     ),
 )
 
@@ -169,5 +293,13 @@ def _format_duration(value: Any) -> str | None:
     hours, remainder = divmod(value, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _rate_unit(snapshot: Mapping[str, Any], denominator: str) -> str | None:
+    """Build a dynamic monetary rate unit such as EUR/kWh."""
+    currency = snapshot.get("last_used_tariff_currency")
+    if not isinstance(currency, str) or not currency:
+        return None
+    return f"{currency}/{denominator}"
 
 # To add new sensors later, append another TapElectricSensorEntityDescription above.

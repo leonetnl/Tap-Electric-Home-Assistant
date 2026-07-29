@@ -38,6 +38,45 @@
       },
       "connector_status": {
         "name": "Connectorstatus"
+      },
+      "charging_current": {
+        "name": "Laadstroom"
+      },
+      "last_session_end": {
+        "name": "Eindtijd laatste sessie"
+      },
+      "last_session_energy": {
+        "name": "Energie laatste sessie"
+      },
+      "last_session_duration": {
+        "name": "Duur laatste sessie"
+      },
+      "last_session_cost_ex_vat": {
+        "name": "Kosten laatste sessie excl. btw"
+      },
+      "last_session_energy_cost_ex_vat": {
+        "name": "Energiekosten laatste sessie excl. btw"
+      },
+      "last_session_idle_duration": {
+        "name": "Idle-duur laatste sessie"
+      },
+      "historical_cdr_energy": {
+        "name": "Totaal CDR-energie"
+      },
+      "historical_cdr_cost_ex_vat": {
+        "name": "Totale CDR-kosten excl. btw"
+      },
+      "last_used_tariff_kwh": {
+        "name": "Laatst gebruikt energietarief"
+      },
+      "last_used_tariff_start": {
+        "name": "Laatst gebruikt starttarief"
+      },
+      "last_used_tariff_hour": {
+        "name": "Laatst gebruikt laadtijdtarief"
+      },
+      "last_used_tariff_idle_hour": {
+        "name": "Laatst gebruikt idle-tarief"
       }
     },
     "binary_sensor": {
@@ -46,6 +85,9 @@
       },
       "occupied": {
         "name": "Bezet"
+      },
+      "online": {
+        "name": "Online"
       }
     }
   }

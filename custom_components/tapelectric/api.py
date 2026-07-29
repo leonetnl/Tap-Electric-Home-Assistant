@@ -7,7 +7,7 @@ from hashlib import sha256
 import logging
 from time import monotonic
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from aiohttp import ClientError, ClientResponse, ClientSession
 
@@ -72,6 +72,12 @@ SESSIONS_ENDPOINT_CANDIDATES: tuple[str, ...] = (
     "/api/v1/sessions",
     "/v1/charging-sessions",
     "/api/v1/charging-sessions",
+)
+
+CHARGER_CDRS_ENDPOINT = "/api/v1/charger-cdrs"
+TARIFF_ENDPOINT = "/api/v1/tariffs"
+SESSION_METER_DATA_ENDPOINT = (
+    "/api/v1/charger-sessions/{session_id}/session-meter-data"
 )
 
 
@@ -196,6 +202,48 @@ class TapElectricApiClient:
                     type(payload).__name__,
                 )
         return sessions
+
+    async def async_get_charger_cdrs(self) -> list[dict[str, Any]]:
+        """Return completed charge detail records for charger-owned sessions."""
+        payload = await self._async_request_candidates(
+            "GET",
+            (f"{CHARGER_CDRS_ENDPOINT}?{urlencode({'take': 1000})}",),
+            purpose="fetch charger CDRs",
+            optional=True,
+            default=[],
+        )
+        return self._extract_list(
+            payload,
+            ("cdrs", "charger_cdrs", "items", "data", "results"),
+        )
+
+    async def async_get_tariff(self, tariff_id: str) -> dict[str, Any]:
+        """Return one tariff by its stable API identifier."""
+        payload = await self._async_request_candidates(
+            "GET",
+            (f"{TARIFF_ENDPOINT}?{urlencode({'tariffId': tariff_id})}",),
+            purpose="fetch tariff",
+            optional=True,
+            default={},
+        )
+        return payload if isinstance(payload, dict) else {}
+
+    async def async_get_session_meter_data(
+        self,
+        session_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return meter samples for a charger session."""
+        payload = await self._async_request_candidates(
+            "GET",
+            (SESSION_METER_DATA_ENDPOINT.format(session_id=session_id),),
+            purpose=f"fetch meter data for session {session_id}",
+            optional=True,
+            default=[],
+        )
+        return self._extract_list(
+            payload,
+            ("meter_data", "measurements", "samples", "items", "data", "results"),
+        )
 
     async def _async_request_candidates(
         self,

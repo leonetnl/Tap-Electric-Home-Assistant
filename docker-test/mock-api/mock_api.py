@@ -6,6 +6,7 @@ import json
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 HOST = "0.0.0.0"
 PORT = 8080
@@ -112,6 +113,81 @@ SESSIONS = {
     ]
 }
 
+CHARGER_CDRS = [
+    {
+        "id": "cdr-historic-1",
+        "chargerId": "charger-1",
+        "startDateTime": "2026-03-16T19:00:00Z",
+        "endDateTime": "2026-03-16T21:10:00Z",
+        "currency": "EUR",
+        "tariffIds": ["tariff-default-1"],
+        "totalCostExVat": 3.95,
+        "totalEnergy": 9.6,
+        "totalEnergyCost": 3.95,
+        "totalTimeHours": 2.167,
+        "totalParkingTimeHours": 0.0,
+        "createdAt": "2026-03-16T21:11:00Z",
+    },
+    {
+        "id": "cdr-historic-2",
+        "chargerId": "charger-2",
+        "startDateTime": "2026-03-15T18:00:00Z",
+        "endDateTime": "2026-03-15T19:20:00Z",
+        "currency": "EUR",
+        "tariffIds": ["tariff-default-2"],
+        "totalCostExVat": 2.41,
+        "totalEnergy": 6.2,
+        "totalEnergyCost": 2.41,
+        "totalTimeHours": 1.333,
+        "totalParkingTimeHours": 0.0,
+        "createdAt": "2026-03-15T19:21:00Z",
+    },
+]
+
+TARIFFS = {
+    "tariff-default-1": {
+        "id": "tariff-default-1",
+        "costPerKwh": 0.4,
+        "costPerStart": 0.0,
+        "costPerHour": 0.0,
+        "costPerIdleHour": 1.0,
+        "currency": "EUR",
+        "type": "Adhoc",
+    },
+    "tariff-default-2": {
+        "id": "tariff-default-2",
+        "costPerKwh": 0.39,
+        "costPerStart": 0.0,
+        "costPerHour": 0.0,
+        "costPerIdleHour": 1.0,
+        "currency": "EUR",
+        "type": "Adhoc",
+    },
+}
+
+SESSION_METER_DATA = {
+    "session-active-1": [
+        {
+            "id": "meter-current-1",
+            "chargerId": "charger-1",
+            "transactionId": "session-active-1",
+            "measurand": "Current",
+            "unit": "A",
+            "value": 16.0,
+            "measuredAt": "2026-03-17T17:30:00Z",
+        },
+        {
+            "id": "meter-energy-1",
+            "chargerId": "charger-1",
+            "transactionId": "session-active-1",
+            "measurand": "Energy",
+            "unit": "Wh",
+            "value": 11800,
+            "measuredAt": "2026-03-17T17:30:00Z",
+        },
+    ]
+}
+
 
 def _is_authorized(headers) -> bool:
     """Check whether the request uses the configured mock API key."""
@@ -135,6 +211,10 @@ class MockApiHandler(BaseHTTPRequestHandler):
             )
             return
 
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        query = parse_qs(parsed_url.query)
+
         routes = {
             "/v1/me": ACCOUNT,
             "/api/v1/me": ACCOUNT,
@@ -150,13 +230,27 @@ class MockApiHandler(BaseHTTPRequestHandler):
             "/api/v1/charging-sessions/active": ACTIVE_SESSIONS,
             "/v1/sessions": SESSIONS,
             "/api/v1/sessions": SESSIONS,
+            "/api/v1/charger-sessions": SESSIONS,
             "/v1/charging-sessions": SESSIONS,
             "/api/v1/charging-sessions": SESSIONS,
+            "/api/v1/charger-cdrs": CHARGER_CDRS,
         }
 
-        if self.path in routes:
-            self._send_json(HTTPStatus.OK, routes[self.path])
+        if path in routes:
+            self._send_json(HTTPStatus.OK, routes[path])
             return
+
+        if path == "/api/v1/tariffs":
+            tariff_id = query.get("tariffId", [""])[0]
+            tariff = TARIFFS.get(tariff_id)
+            if tariff is not None:
+                self._send_json(HTTPStatus.OK, tariff)
+                return
+
+        for session_id, payload in SESSION_METER_DATA.items():
+            if path == f"/api/v1/charger-sessions/{session_id}/session-meter-data":
+                self._send_json(HTTPStatus.OK, payload)
+                return
 
         for charger_id, payload in CHARGER_STATUSES.items():
             status_paths = {
@@ -167,20 +261,20 @@ class MockApiHandler(BaseHTTPRequestHandler):
                 f"/v1/charge-points/{charger_id}": payload,
                 f"/api/v1/charge-points/{charger_id}": payload,
             }
-            if self.path in status_paths:
-                self._send_json(HTTPStatus.OK, status_paths[self.path])
+            if path in status_paths:
+                self._send_json(HTTPStatus.OK, status_paths[path])
                 return
 
         self._send_json(
             HTTPStatus.NOT_FOUND,
-            {"error": "not_found", "path": self.path},
+            {"error": "not_found", "path": path},
         )
 
     def log_message(self, format: str, *args) -> None:
         """Log to stdout in a compact format."""
         print("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
 
-    def _send_json(self, status: HTTPStatus, payload: dict) -> None:
+    def _send_json(self, status: HTTPStatus, payload: dict | list) -> None:
         """Send a JSON response."""
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)

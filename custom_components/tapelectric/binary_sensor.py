@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
@@ -23,7 +24,7 @@ from .device import TapElectricChargerEntity
 class TapElectricBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes a Tap Electric binary sensor entity."""
 
-    value_fn: Callable[[Mapping[str, Any]], bool]
+    value_fn: Callable[[Mapping[str, Any]], bool | None]
     attrs_fn: Callable[[Mapping[str, Any]], Mapping[str, Any] | None] | None = None
 
 
@@ -41,6 +42,15 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[TapElectricBinarySensorEntityDescription, ...]
         value_fn=lambda snapshot: bool(snapshot.get("is_occupied")),
         attrs_fn=lambda snapshot: {
             "availability_state": "occupied" if snapshot.get("is_occupied") else "available"
+        },
+    ),
+    TapElectricBinarySensorEntityDescription(
+        key="online",
+        translation_key="online",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=lambda snapshot: snapshot.get("is_online"),
+        attrs_fn=lambda snapshot: {
+            "online_status": snapshot.get("online_status"),
         },
     ),
 )
@@ -112,4 +122,3 @@ class TapElectricBinarySensor(TapElectricChargerEntity, BinarySensorEntity):
             if extra:
                 attributes.update(extra)
         return attributes
-

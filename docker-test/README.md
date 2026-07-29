@@ -68,6 +68,9 @@ De mock API biedt voorbeelddata voor:
 - laadpaalstatus
 - actieve sessies
 - historische sessies
+- CDR-kosten en totalen
+- laatst gebruikte tarieven
+- meterdata voor een actieve sessie
 
 Zo kun je testen of:
 
